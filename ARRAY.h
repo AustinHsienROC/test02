@@ -1,3 +1,4 @@
+////////1234
 /// used in the canny edge.
 #if !defined(ARRAY_H)  
 #define ARRAY_H  
