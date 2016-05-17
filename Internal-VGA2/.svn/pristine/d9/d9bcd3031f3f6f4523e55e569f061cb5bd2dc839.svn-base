@@ -1,0 +1,218 @@
+﻿/*     
+上帝對人說：                       ╭＊  
+『我醫治你，所以我要損傷你；       〓  
+  我愛你  ，所以我要懲罰你。』   ◢█◣  
+                                 ███  
+                                 ◥█◤   要賣到全世界了！！！！　  
+*/
+//******************************************************************************
+//  I N C L U D E     F I L E S
+//******************************************************************************
+#include "stdafx.h"
+#include "CTA_Def.h"
+
+#ifdef _WIN32
+
+#   include <stdlib.h>
+#   include <malloc.h>
+#   include <string.h>
+#   include <stdio.h>
+#   include <math.h>
+#   include <time.h>
+#   include <iostream>
+#   include <string>   // for strings
+#   include <cassert>  // assert
+
+#   if( ON == PC_FILE_INFO )
+        #include <fstream>
+#   endif
+#endif
+
+#include "OpencvPlug.h"		///< Need Before "CTA_Type.h" due to VARIABLE File
+#include "oToCAMDLL_Interface.h"
+#include "CTAApi.h"
+#include "VideoHdInfo.h"
+
+//******************************************************************************
+// F U N C T I O N S
+//******************************************************************************
+
+/**
+* @brief FW(RemoteCtrl) know the project Type  
+*/
+__declspec(dllexport) int __cdecl oTo_GetAlgorithmID(void)
+{
+    return ALGORITHM_ID;
+}
+
+/**
+* @brief DebugInfo show on the RemoteCtrl.exe for each cmds
+*/
+__declspec(dllexport) char* __cdecl oTo_GetFrameInfo(void)
+{
+
+    //	if (g_bLoadTopViewFile)
+    //		sprintf_s((char*)g_FrameReport,C_MAX_FRAME_DISPLAY_INFORMATION
+    //			,"Load TopViewLUT\r\nVersion : %u, CarWidth %ucm\r\n frameCounter=%d\n Result:0X%0X, (%u,%u)\r\nLeft:%u, LeftWarn:%u\r\nRight:%u, RightWarn:%u\r\nOnLine:%u, Sys:%u\r\ndbg_L_EC, :%u, dbg_R_EC:%u\r\ndbg_L_ESC, :%u, dbg_R_ESC:%u\r\n dbg_FINAL_L_ESC, :%u, dbg_FINAL_R_ESC:%u\r\n dbg_LTdis, %d, LCSet, %u\r\ndbg_RTdis, %d, RCSet, %u\r\n"
+
+    //			, g_LDWS_CaliInfo.version,customerSpec->WheelSpan
+    //			, carState->frameCounter
+    //			, g_FrameResult, leftLine->edgeSeedCounter ,rightLine->edgeSeedCounter
+    //			, (g_FrameResult&(1<<6))>>6 , (g_FrameResult&(1<<4))>>4
+    //			, (g_FrameResult&(1<<5))>>5 ,(g_FrameResult&(1<<3))>>3
+    //			, (g_FrameResult&(1<<2))>>2 , (g_FrameResult&(1<<7))>>7,  dbgInfo->SeedCounter_left_EC, dbgInfo->SeedCounter_right_EC
+    //			, dbgInfo->SeedCounter_left_ESC, dbgInfo->SeedCounter_right_ESC 
+    //			, dbgInfo->final_left_ESC, dbgInfo->final_right_ESC 
+    //			, dbgInfo->leftTireDistance, dbgInfo->LCSet
+    //			, dbgInfo->rightTireDistance, dbgInfo->RCSet);
+	int i=MAX(100-g_FrameReportIdx,0);
+	while(i--)
+	g_FrameReportIdx+=sprintf(g_FrameReport+g_FrameReportIdx," ");
+   
+	return g_FrameReport;
+}
+/**
+* @brief    (for VideoTester.exe) Return specific result data for each Frame
+* @n        It will be called after oTo_ImgProcess2.
+* @n The function will return information needed by auto test process
+* @n caller shall prepare the buffer
+* @n a_unFrameResultDataID means what data to get
+* @n return value > 0, means return data size
+* @n return value ==0, means error happen
+*/
+__declspec(dllexport) int __cdecl oTo_GetAutoTestFrameInfo(
+    unsigned int a_unFrameResultDataID
+    , unsigned char * a_pBuf, unsigned int a_unBufSize)
+{
+    int *pIntBuf = NULL;
+    if (NULL==a_pBuf)
+        return 0;
+
+    switch (a_unFrameResultDataID){
+    case 0:
+        if (a_unBufSize < 1)
+            return 0;
+        a_pBuf[0] = CTAAlarmState;//g_FrameResult;
+        return 1;
+
+    case 1:
+        if (a_unBufSize < 8)
+            return 0;
+        pIntBuf = (int*)a_pBuf;
+        //			pIntBuf[0] = dbgInfo->leftTireDistance;
+        //			pIntBuf[1] = dbgInfo->rightTireDistance;
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
+* @brief  The function will return version information needed by auto test process
+*/
+__declspec(dllexport) int __cdecl oTo_GetVersion()
+{
+    return C_CTA_DLL_VERSION;
+}
+
+/**
+* @brief  Return Current Image Resolution
+*/
+__declspec(dllexport) void __cdecl oTo_GetDisplayImgResolution(int* a_dstImgWidth, int* a_dstImgHeight
+    ,int a_SrcImgWidth, int a_SrcImgHeight)
+{
+    if (NULL!=a_dstImgWidth)
+#ifdef topView
+        *a_dstImgWidth = a_SrcImgWidth+420;
+#else
+        *a_dstImgWidth = a_SrcImgWidth;
+#endif
+
+    if (NULL!=a_dstImgHeight)
+        *a_dstImgHeight = a_SrcImgHeight;
+}
+
+/**
+*@brief						Frame Input Start function
+*@param[in] src_Y			the YCbCr ImgData
+*@param[in] frame_pitch		FrameWidth = frame_pitch/2
+*@param[in] FrameHd			Car Info[Speed, angle, FrameCount] from VideoHdInfo.h
+*/
+__declspec(dllexport) void oTo_ImgProcess2(unsigned char *dst_Y, int dst_img_pitch, int dst_img_height
+                                ,unsigned char *src_Y, int frame_pitch, int frame_height
+                                ,unsigned int FrameIndex_1Base, unsigned int FrameTimeStamp
+                                ,unsigned char *FrameHd)
+{
+    CTA_Process( dst_Y, src_Y, FrameHd);
+
+    if (85 == FrameIndex_1Base)
+        printf("hit");
+}   
+
+
+/**
+* @brief	 Update the Calibration LUT oTo_SetData will be called after called oTo_WorkBuf_Allocate()
+* @param[in] a_unParameterID	Type of LUT(xiToXw or XwtoXi)
+* @param[in] a_pData			Input Data
+* @param[in] a_pData			Input DataSize
+*/
+__declspec(dllexport) bool __cdecl oTo_UpdateParameter(unsigned int a_unParameterID
+                    , unsigned char * a_pData, unsigned int a_unDataSize)
+{
+
+    /*-----------------+-------------------------------------------------------+------------
+      a_unParameterID  |   DESCRIPTION  					
+     ------------------+-------------------------------------------------------+------------
+      0                | [ Image   to TopView ]  LUT   	
+     ------------------+-------------+-----------------------------------------+------------
+      1                | [ TOPView to Image   ]  LUT 
+     ------------------+-------------------------------------------------------+------------
+      2                | VideoFilePath : Video File Path
+     ------------------+-------------------------------------------------------+------------
+      3                | Custom Car data
+     ------------------+-------------------------------------------------------+------------
+    */
+
+    if ( 0 == a_unParameterID )
+    {
+        CTA_UpdateLUT(a_unParameterID, a_pData, a_unDataSize);
+    }
+    else if(1 == a_unParameterID)
+    {
+        CTA_UpdateLUT(a_unParameterID, a_pData, a_unDataSize);
+    }
+    else if(2 == a_unParameterID)
+    {
+        memcpy( VideoFilePath ,a_pData, a_unDataSize );///< TOPView to img LUT
+    }
+    else if(3 == a_unParameterID)
+    {
+        CTA_UpdateCarInfo_Skin(a_pData, a_unDataSize);
+    }
+    return TRUE;
+}
+
+
+/**
+* @brief Initial CTA Buffer at start.
+*/
+__declspec(dllexport) void __cdecl oTo_WorkBuf_Allocate(void)
+{
+    CTA_WorkBuf_Allocate(); ///< API & RemoteCtrl Interface cleave
+}
+
+/**
+* @brief Release Memory
+*/
+__declspec(dllexport) void oTo_WorkBuf_Release()
+{
+    CTA_WorkBuf_Release(); ///< API & RemoteCtrl Interface cleave
+}
+
+/**
+* @brief CTA 軟體Trigger, 
+*/
+__declspec(dllexport) void oTo_Parameter_Reset()
+{  
+    CTA_Reset();
+}

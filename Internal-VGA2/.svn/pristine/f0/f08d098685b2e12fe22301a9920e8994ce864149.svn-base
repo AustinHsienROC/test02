@@ -1,0 +1,733 @@
+#include "stdafx.h"
+#include "OSD_Plot.h"
+#include <math.h>
+
+
+YCbCr_t g_OSD_color;
+const INT32 RGB2YCC_coef[3][4] = {
+    {  19595,  38470,   7471,     0 },
+    { -11059, -21709,  32768,   128 },
+    {  32768, -27439,  -5329,   128 } };
+/**
+* @brief 
+  @n		// RGB to YCrCb equation [ITU-R BT.601.-JPEG full 8-bit range conversion] is as follows,
+  @n		// [Y ]   [ 0.29900   0.58700   0.11400] [R]   [  0]
+  @n		// [Cb] = [-0.16874  -0.33126   0.50000] [G] + [128]
+  @n		// [Cr]   [ 0.50000  -0.41869  -0.08131] [B]   [128]
+  @n		//
+  @n		// RGB/YCC conversion matrix, 16-bit fixed-point
+* @param[in]  R  Input Red channel value
+* @param[out] pY Output  Y channel value
+*/
+void RGB2YCbCr(UCHAR R  , UCHAR G   , UCHAR B,
+               UCHAR *pY, UCHAR *pCb, UCHAR *pCr)
+{
+    int Y, Cb, Cr;
+
+    Y    = ((R*RGB2YCC_coef[0][0] + G*RGB2YCC_coef[0][1] + B*RGB2YCC_coef[0][2]) >> 16) + RGB2YCC_coef[0][3];
+    Cb   = ((R*RGB2YCC_coef[1][0] + G*RGB2YCC_coef[1][1] + B*RGB2YCC_coef[1][2]) >> 16) + RGB2YCC_coef[1][3];
+    Cr   = ((R*RGB2YCC_coef[2][0] + G*RGB2YCC_coef[2][1] + B*RGB2YCC_coef[2][2]) >> 16) + RGB2YCC_coef[2][3];
+    *pY  = SAT8(Y);
+    *pCb = SAT8(Cb);
+    *pCr = SAT8(Cr);
+}
+/**
+* @brief 
+  @n	// YCrCb to RGB equation [ITU-R BT.601.-JPEG full 8-bit range conversion] is as follows,
+  @n	// [R ]   Y + 1.402  (Cr-128)
+  @n	// [G ] = Y - 0.34414(Cb-128) - 0.71414(Cr-128)
+  @n	// [B ]   Y + 1.772  (Cb-128)
+  @n	//
+  @n	// RGB/YCC conversion matrix, 16-bit fixed-point
+* @param[out] R  Output Red channel value
+* @param[in]  pY Input  Y   channel value
+*/
+static void YCbCr2RGB(UCHAR *pR  , UCHAR *pG   , UCHAR *pB,
+               UCHAR Y, UCHAR Cb, UCHAR Cr)
+{
+    INT32 R, G, B;
+
+    R = ((INT32)Y)<<16+ 91881*((INT32)Cr-128);
+    G = ((INT32)Y)<<16- 22553*((INT32)Cb-128) - 46802*((INT32)Cr-128);
+    B = ((INT32)Y)<<16+ 116130*((INT32)Cb-128);
+
+    *pR  = SAT8((R>>16));
+    *pG  = SAT8((G>>16));
+    *pB  = SAT8((B>>16));
+}
+
+/**
+* @brief	  Set Global Pen Color
+* @param[in]  R_value Input Color
+* @param[in]  G_value Input Color
+* @param[in]  B_value Input Color
+*/
+void OSD_SetColor(unsigned char R_value, unsigned char G_value, unsigned char B_value)
+{
+    RGB2YCbCr(R_value, G_value, B_value, &(g_OSD_color.Y), &(g_OSD_color.Cb), &(g_OSD_color.Cr));
+}    
+
+/**
+* @brief	Set Image(x,y) = Pen Color(OSD_SetColor())
+  @n		Image Format is YCbCr422 and Each Row present as
+  @n		[[Y1 Cb1 Y2 Cr1] [Y3 Cb3 Y3 Cr3] [Y Cb Y Cr] ....[Y Cb Y Cr]]
+   
+  @n		Pixel(0,0) = (Y1,Cb1,Cr1);
+  @n		Pixel(0,1) = (Y2,Cb1,Cr1);
+  @n		Pixel(0,2) = (Y3,Cb3,Cr3);
+  @n		Pixel(0,3) = (Y4,Cb3,Cr3);
+
+  @n		if 640x480 , each row has 1280 bytes info.
+  @n		closed 2 pixels may share same Cb, Cr.
+* @param[out]  dst		Output Image
+* @param[in]   x		Position_X
+* @param[in]   y		Position_Y
+*/
+void OSD_Draw_Pixel( UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 x, UINT32 y , FLOAT alpha )
+{
+    if (x < dst_width && y < dst_height)
+    {
+        *(dst + (y*dst_width + x)*2) = (UCHAR)((alpha)*g_OSD_color.Y + (1-alpha)*(*(dst + (y*dst_width + x)*2)));
+
+        if (0 == x % 2) // even pixel
+        { 
+            *(dst + (y*dst_width + x)*2 + 1) = (UCHAR)((alpha)*g_OSD_color.Cb + (1-alpha)*(*(dst + (y*dst_width + x)*2 + 1)));
+            *(dst + (y*dst_width + x)*2 + 3) = (UCHAR)((alpha)*g_OSD_color.Cr + (1-alpha)*(*(dst + (y*dst_width + x)*2 + 3)));
+        }
+        else // even pixel
+        { 
+            *(dst + (y*dst_width + x)*2 - 1) = (UCHAR)((alpha)*g_OSD_color.Cb + (1-alpha)*(*(dst + (y*dst_width + x)*2 - 1)));;
+            *(dst + (y*dst_width + x)*2 + 1) = (UCHAR)((alpha)*g_OSD_color.Cr + (1-alpha)*(*(dst + (y*dst_width + x)*2 + 1)));
+        }
+    }  
+    /* old version
+    if (x < dst_width && y < dst_height)
+    {
+        *(dst + (y*dst_width + x)*2) = g_OSD_color.Y;
+
+        if (0 == x % 2) // even pixel
+        { 
+            *(dst + (y*dst_width + x)*2 + 1) = g_OSD_color.Cb;
+            *(dst + (y*dst_width + x)*2 + 3) = g_OSD_color.Cr;
+        }
+        else // even pixel
+        { 
+            *(dst + (y*dst_width + x)*2 - 1) = g_OSD_color.Cb;
+            *(dst + (y*dst_width + x)*2 + 1) = g_OSD_color.Cr;
+        }
+    }  
+    */
+}
+
+/**
+* @brief		  Draw Line onto OSD Canvas
+* @param[in,out]  dst		Image Canvas
+* @param[in]	  start_x	starting Position_X(must <end_x)-horizontal direction
+* @param[in]	  start_y	starting Position_Y-vertical direction
+*/
+void OSD_Draw_Line (UCHAR *dst, UINT32 dst_width, UINT32 dst_height, 
+    INT32 start_x, INT32 start_y, INT32 end_x, INT32 end_y, UINT32 thickness, FLOAT alpha)
+{
+    int halfThick = MAX(thickness>>1,0);
+
+    /// Slope<=1
+    if((ABS(end_y-start_y))<(ABS(end_x-start_x)))
+    {
+        INT32 tmpy;
+        
+        /// Point Swap if (end_x < start_x)
+        if(end_x < start_x)
+        {
+            INT32 tmp = end_x;
+            end_x     = start_x;
+            start_x   = tmp;
+
+            tmp = end_y;
+            end_y     = start_y;
+            start_y   = tmp;
+        }
+
+        /// Plot Line
+        for (int i1 = start_x ; i1<end_x; ++i1)
+        {
+            tmpy = start_y + (((float)(end_y-start_y))/((float)(end_x-start_x))*((float)(i1-start_x)));
+        
+            for (int i2 = -halfThick ; i2<=halfThick; ++i2)
+            {
+                OSD_Draw_Pixel( dst, dst_width,  dst_height, i1, tmpy+i2 , alpha);
+            }
+        }
+    }
+    else /// Slope>1
+    {
+        int tmpx;
+
+        /// Point Swap if (end_y < start_y)
+        if( end_y < start_y )
+        {
+            INT32 tmp = end_x;
+            end_x     = start_x;
+            start_x   = tmp;
+
+            tmp = end_y;
+            end_y     = start_y;
+            start_y   = tmp;
+        }
+        for (int i1 = start_y ; i1<end_y; ++i1)
+        {
+            tmpx = start_x + (((float)(end_x-start_x))/((float)(end_y-start_y))*((float)(i1-start_y)));
+
+            for (int i2 = -halfThick ; i2<=halfThick; ++i2)
+            {
+                OSD_Draw_Pixel( dst, dst_width,  dst_height, tmpx+i2, i1 , alpha);
+            }
+        }
+    }
+}
+
+/**
+* @brief		  Draw circle shape
+* @param[in,out]  dst		    Image Canvas
+* @param[in]	  center_x	    center of circle
+* @param[in]	  DrawPartial	is 1,2,3,4 Quadrant draw ({true,false,false,true} plot 1,4 Quadrant. ex.BOOL DrawPartial[4] = {1,0,0,1};)
+*/
+void OSD_Draw_Circle(UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 center_x, INT32 center_y, INT32 radius, UINT32 thickness, BOOL DrawPartial[4])
+{
+    INT32 halfthick = MAX((thickness>>1),0);
+    INT32 tmpy;
+    for (INT32 hori = (center_x - radius) ; hori<= (center_x + radius) ; ++hori)
+    {
+        BOOL isDraw = TRUE;
+        //下半部
+        tmpy = center_y + sqrt((FLOAT)(radius*radius - (hori-center_x)*(hori-center_x)));
+        if( (true != DrawPartial[0])&&( hori>=center_x ) && (tmpy<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[1])&&( hori<=center_x ) && (tmpy<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[2])&&( hori<=center_x ) && (tmpy>=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[3])&&( hori>=center_x ) && (tmpy>=center_y) )isDraw = FALSE;
+        if(TRUE==isDraw)
+        for (INT32 i1 = -halfthick ; i1<=halfthick; ++i1)
+            OSD_Draw_Pixel( dst, dst_width, dst_height, hori+i1, tmpy);
+ 
+       //上半部
+        isDraw = TRUE;
+        tmpy = center_y - sqrt((FLOAT)(radius*radius - (hori-center_x)*(hori-center_x)));
+        if( (true != DrawPartial[0])&&( hori>=center_x ) && (tmpy<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[1])&&( hori<=center_x ) && (tmpy<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[2])&&( hori<=center_x ) && (tmpy>=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[3])&&( hori>=center_x ) && (tmpy>=center_y) )isDraw = FALSE;
+        if(TRUE==isDraw)
+        for (INT32 i1 = -halfthick ; i1<=halfthick; ++i1)
+            OSD_Draw_Pixel( dst, dst_width, dst_height, hori+i1, tmpy);
+
+    }
+    
+    INT32 tmpx;
+    for (INT32 vert = (center_y - radius) ; vert<= (center_y + radius) ; ++vert)
+    {
+        BOOL isDraw = TRUE;
+        tmpx = center_x + sqrt((FLOAT)(radius*radius - (vert-center_y)*(vert-center_y)));
+        if( (true != DrawPartial[0])&&( tmpx>=center_x ) && (vert<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[1])&&( tmpx<=center_x ) && (vert<=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[2])&&( tmpx<=center_x ) && (vert>=center_y) )isDraw = FALSE;
+        if( (true != DrawPartial[3])&&( tmpx>=center_x ) && (vert>=center_y) )isDraw = FALSE;
+        if(TRUE==isDraw)
+        for (INT32 i1 = -halfthick ; i1<=halfthick; ++i1)
+            OSD_Draw_Pixel( dst, dst_width, dst_height, tmpx, vert+i1);
+
+        isDraw = TRUE;
+        tmpx = center_x - sqrt((FLOAT)(radius*radius - (vert-center_y)*(vert-center_y)));
+        if( (true != DrawPartial[0])&&( tmpx>=center_x ) && (vert<=center_y) )continue;
+        if( (true != DrawPartial[1])&&( tmpx<=center_x ) && (vert<=center_y) )continue;
+        if( (true != DrawPartial[2])&&( tmpx<=center_x ) && (vert>=center_y) )continue;
+        if( (true != DrawPartial[3])&&( tmpx>=center_x ) && (vert>=center_y) )continue;
+        if(TRUE==isDraw)
+        for (INT32 i1 = -halfthick ; i1<=halfthick; ++i1)
+            OSD_Draw_Pixel( dst, dst_width, dst_height, tmpx, vert+i1);
+    }
+    
+}
+
+/**
+* @brief		  Draw Rectangle onto OSD Canvas
+* @param[in,out]  dst		Image Canvas
+* @param[in]	  start_x	starting Position_X(must <end_x)-horizontal direction
+* @param[in]	  start_y	starting Position_Y(must <end_y)-vertical direction
+*/
+void OSD_Draw_Rec(UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 start_x, INT32 start_y, INT32 end_x, INT32 end_y, UINT32 thickness, BOOL isFilled , FLOAT alpha )
+{
+    /// Draw Frame
+    OSD_Draw_Line(dst,dst_width, dst_height, start_x,start_y,end_x,start_y, thickness ,alpha);
+    OSD_Draw_Line(dst,dst_width, dst_height, start_x,start_y,start_x,end_y, thickness ,alpha);
+    OSD_Draw_Line(dst,dst_width, dst_height, end_x,start_y,end_x,end_y, thickness ,alpha);
+    OSD_Draw_Line(dst,dst_width, dst_height, start_x,end_y,end_x,end_y, thickness ,alpha);
+
+    /// Draw filled
+    if(isFilled)
+    {
+        for ( int i1 = start_y ; i1 <= end_y ; ++i1)
+        {
+            OSD_Draw_Line( dst , dst_width, dst_height, start_x , i1 , end_x , i1 , thickness ,alpha);
+        }
+    }
+
+}
+
+/**
+* @brief			Draw Digit onto OSD Canvas
+  @n				0,1,2,3,4,5,6,7,8,9
+* @param[in,out]	dst			Image Canvas
+* @param[in]		digitNum	0-9 integer
+* @param[in]		size	    the Height of digit
+*/
+void OSD_Draw_Digit(UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 start_x, INT32 start_y, UCHAR digitNum, UINT32 thickness ,UINT32 size)
+{
+    switch ( digitNum )
+    {
+    case 0:
+        OSD_Draw_Rec( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y+(size), thickness, false);
+        break;
+    case 1:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x, start_y+(size), thickness);
+        break;
+    case 2:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y, start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x, start_y+size, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+size, start_x+(size>>1), start_y+size, thickness);
+        break;
+    case 3:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y, start_x+(size>>1), start_y+size, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+size, start_x+(size>>1), start_y+size, thickness);
+        break;
+    case 4:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x, start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y, start_x+(size>>1), start_y+size, thickness);
+        break;
+    case 5:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x, start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y+(size>>1), start_x+(size>>1), start_y+size, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+size, start_x+(size>>1), start_y+size, thickness);
+        break;
+    case 6:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x, start_y+(size), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y+(size>>1), start_x+(size>>1), start_y+size, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size), start_x+(size>>1), start_y+size, thickness);
+        break;
+    case 7:
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y, thickness);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1),  start_y, start_x+(size>>1), start_y+(size), thickness);
+        break;
+    case 8:
+        OSD_Draw_Rec( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y+(size), thickness, false);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x ,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+        break;
+    case 9:
+        OSD_Draw_Rec( dst, dst_width,  dst_height,  start_x,  start_y, start_x+(size>>1), start_y+(size>>1), thickness, false);
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x+(size>>1) ,  start_y , start_x+(size>>1), start_y+size, thickness);
+        break;
+    }
+}
+
+/**
+* @brief	  GetValuedigit
+* @param[in]  number	ex. 5678
+* @param[in]  position	ex.[3210]
+* @return     the digital value
+*/
+int GetValuedigit(int number, int position) 
+{
+    return (int)(number/ pow(10.0,position) )%10;
+}
+/**
+* @brief		  Draw INT32 value onto OSD Canvas
+  @n			  -2,147,483,648 ~ 2,147,483,647
+* @param[in,out]  dst		Image Canvas
+* @param[in]	  value		integer 32-bit
+* @param[in]	  size	    the Height of digit
+*/
+void OSD_Draw_INT32(INT32 value , UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 start_x, INT32 start_y, UINT32 thickness ,UINT32 size)
+{
+    if( value > 0) /// Positive value
+    {
+        int digitNum =0;
+        INT32 tmpValue= value;
+        while( tmpValue != 0 ){ tmpValue/=10; ++digitNum; }
+
+        tmpValue = value ; 
+        for ( int i1 = digitNum ; i1>0 ; --i1)
+        {
+            INT32 digitvalue= GetValuedigit( value, i1-1) ;
+            OSD_Draw_Digit( dst, dst_width , dst_height , start_x+(digitNum-i1)*size , start_y, digitvalue ,thickness , size);
+        }
+    }
+    else if( value < 0 )
+    {
+        int digitNum =0;
+        INT32 tmpValue= -value;
+
+        /// Draw "-" Sign
+        OSD_Draw_Line( dst, dst_width,  dst_height,  start_x,  start_y+(size>>1), start_x+(size>>1), start_y+(size>>1), thickness);
+
+        while( tmpValue != 0 ){ tmpValue/=10; ++digitNum; }
+
+        tmpValue = value ; 
+        for ( int i1 = digitNum ; i1>0 ; --i1)
+        {
+            INT32 digitvalue= GetValuedigit( -value, i1-1) ;
+            OSD_Draw_Digit( dst, dst_width , dst_height , start_x+(digitNum-i1)*size +size, start_y, digitvalue ,thickness , size);
+        }
+    }
+    else // 0
+    {
+        const INT digitvalue = 0;
+        OSD_Draw_Digit( dst, dst_width , dst_height , start_x, start_y, digitvalue ,thickness , size);
+    }
+}
+
+/**
+* @brief		  Draw Text value onto OSD Canvas
+  @n			  example: TTC/Speed/CornerQ
+* @param[in,out]  dst		Image Canvas
+* @param[in]	  str		string
+* @param[in]	  size	    the Width of a character(Not Implement Yet)
+*/
+void OSD_Draw_Text( const CHAR *str , UCHAR *dst, UINT32 dst_width, UINT32 dst_height, INT32 start_x, INT32 start_y,UINT32 size )
+{
+    CHAR tmp01;
+
+    ///1) idx  to str[i1]
+    const BOOL *p_alphabet;
+    for ( INT16 i1 = 0 ; i1 <strlen((char *)str);++i1)
+    {
+        ///1.1) ptr to correct Alphabet data
+        tmp01 = str[i1];
+        if( ( 65<=tmp01) && (tmp01<=90))  /// A-Z
+        {
+            p_alphabet = Alphabet+(tmp01-65)*(GlyphOutlineWidth*GlyphOutlineHeight);			
+        }
+        if( ( 97<=tmp01) && (tmp01<=122))
+        {
+            p_alphabet = Alphabet+(tmp01-97)*(GlyphOutlineWidth*GlyphOutlineHeight)+26*(GlyphOutlineWidth*GlyphOutlineHeight);
+        }
+
+        ///1.2) OSD_Draw_Pixel according to Alphabet data mask
+        for ( int vert = 0; vert<GlyphOutlineHeight;++vert)
+        {
+            for ( int hori = 0 ; hori < GlyphOutlineWidth; ++hori)
+            {
+                if( 0 == p_alphabet[ vert * GlyphOutlineWidth + hori ] ) //黑字
+                {
+                    OSD_Draw_Pixel( dst, dst_width, dst_height, hori + start_x+i1*((FLOAT)GlyphOutlineWidth*2/5) , vert + start_y);
+                }
+            }
+        }
+    } //end of strlen(str)
+}
+
+//////////////////////////////////////////////////////////////////////////
+void MultiView_Nearest(unsigned char *dst, int dst_width, int dst_height,
+    unsigned char *src, int src_width, int src_height,
+    unsigned int *LUT)
+{
+    int row, col;
+    unsigned int offset;
+    int src_x, src_y;
+    int even_Y, even_Cb, even_Cr;
+    int odd_Y, odd_Cb, odd_Cr;
+
+
+    for (row=0; row<dst_height; row++)
+    {
+        for (col=0; col<dst_width; col+=2)
+        {
+            // even pixel
+            offset = *(LUT + row*dst_width + col);
+            if (offset == 0xFFFFFFFF)
+            {
+                even_Y = 0;
+                even_Cb = 128;
+                even_Cr = 128;
+            }
+            else
+            {
+                src_y = offset >> 16;
+                src_x = offset & 0xFFFF;
+
+                if (src_x % 2 == 0)
+                {
+                    even_Y  = *(src + (src_y*src_width + src_x)*2    );
+                    even_Cb = *(src + (src_y*src_width + src_x)*2 + 1);
+                    even_Cr = *(src + (src_y*src_width + src_x)*2 + 3);
+                }
+                else
+                {
+                    even_Y  = *(src + (src_y*src_width + src_x)*2    );
+                    even_Cb = *(src + (src_y*src_width + src_x)*2 - 1);
+                    even_Cr = *(src + (src_y*src_width + src_x)*2 - 3);
+                }
+            }
+
+            // odd pixel
+            offset = *(LUT + row*dst_width + col+1);
+            if (offset == 0xFFFFFFFF)
+            {
+                odd_Y = 0;
+                odd_Cb = 128;
+                odd_Cr = 128;
+            }
+            else
+            {
+                src_y = offset >> 16;
+                src_x = offset & 0xFFFF;
+
+                if (src_x % 2 == 0)
+                {
+                    odd_Y  = *(src + (src_y*src_width + src_x)*2    );
+                    odd_Cb = *(src + (src_y*src_width + src_x)*2 + 1);
+                    odd_Cr = *(src + (src_y*src_width + src_x)*2 + 3);
+                }
+                else
+                {
+                    odd_Y  = *(src + (src_y*src_width + src_x)*2    );
+                    odd_Cb = *(src + (src_y*src_width + src_x)*2 - 1);
+                    odd_Cr = *(src + (src_y*src_width + src_x)*2 - 3);
+                }
+            }
+
+            *(dst + (row*dst_width + col)*2    ) = even_Y;
+            *(dst + (row*dst_width + col)*2 + 1) = (even_Cb + odd_Cb + 1)/2;
+            *(dst + (row*dst_width + col)*2 + 2) = odd_Y;
+            *(dst + (row*dst_width + col)*2 + 3) = (even_Cr + odd_Cr + 1)/2;
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+void ScaleDownby2_422(unsigned char *dst, int dst_width, int dst_height,
+    unsigned char *src, int src_width, int src_height)
+{
+    int row, col;
+    int Y00, Y01, Y10, Y11;
+    int Cb0, Cb1, Cr0, Cr1;
+
+    int Y22, Y23, Y32, Y33;
+    int Cb2, Cb3, Cr2, Cr3;
+
+
+    for (row=0; row<dst_height; row++) 
+    {
+        for (col=0; col<dst_width; col+=2)
+        {
+            Y00 = *(src + (row*2)*src_width*2 + (col*2)*2    );
+            Cb0 = *(src + (row*2)*src_width*2 + (col*2)*2 + 1);
+            Y01 = *(src + (row*2)*src_width*2 + (col*2)*2 + 2);
+            Cr0 = *(src + (row*2)*src_width*2 + (col*2)*2 + 3);
+
+            Y10 = *(src + (row*2+1)*src_width*2 + (col*2)*2    );
+            Cb1 = *(src + (row*2+1)*src_width*2 + (col*2)*2 + 1);
+            Y11 = *(src + (row*2+1)*src_width*2 + (col*2)*2 + 2);
+            Cr1 = *(src + (row*2+1)*src_width*2 + (col*2)*2 + 3);
+
+            Y22 = *(src + (row*2)*src_width*2 + ((col+1)*2)*2    );
+            Cb2 = *(src + (row*2)*src_width*2 + ((col+1)*2)*2 + 1);
+            Y23 = *(src + (row*2)*src_width*2 + ((col+1)*2)*2 + 2);
+            Cr2 = *(src + (row*2)*src_width*2 + ((col+1)*2)*2 + 3);
+
+            Y32 = *(src + (row*2+1)*src_width*2 + ((col+1)*2)*2    );
+            Cb3 = *(src + (row*2+1)*src_width*2 + ((col+1)*2)*2 + 1);
+            Y33 = *(src + (row*2+1)*src_width*2 + ((col+1)*2)*2 + 2);
+            Cr3 = *(src + (row*2+1)*src_width*2 + ((col+1)*2)*2 + 3);
+
+            *(dst + row*dst_width*2 + (col)*2    )= (Y00 + Y01 + Y10 + Y11 + 2)/4; 
+            *(dst + row*dst_width*2 + (col)*2 + 1)= (Cb0 + Cb1 + Cb2 + Cb3 + 2)/4; 
+            *(dst + row*dst_width*2 + (col)*2 + 2)= (Y22 + Y23 + Y32 + Y33 + 2)/4; 
+            *(dst + row*dst_width*2 + (col)*2 + 3)= (Cr0 + Cr1 + Cr2 + Cr3 + 2)/4;
+        }
+    }
+
+}
+
+/**
+* @brief		 Draw the Harris Corner into dst as specific color.
+* @param[in,out] dst		Output Image
+* @param[in]	 src		Input UINT16 g_harrisMap [ if(!Corner)g_harrisMap[i] = 0 ]
+* @param[in]	 Y_value	DrawColor_Y
+* @param[in]	 CbCr_value DrawColor_CbCr
+*/
+void CopyHalfImgToOutput (unsigned char *dst, int dst_width, int dst_height,
+    unsigned short *src, int src_width, int src_height, int direction, int Y_value, int CbCr_value, unsigned short *o_harrisMap)
+{
+    int row, column_offset, col, showThr=1;//10000;
+    if(direction==0)
+        column_offset=0;
+    else
+        column_offset=src_width;
+
+    for(row=0; row<src_height; row++)
+    {
+        for (col=0; col<src_width; col++)
+        {
+            if(*(src + row*src_width + column_offset+col)>=showThr)// || *(src + row*src_width + column_offset+col)==0)//edge points
+                //if(*(o_harrisMap + row*src_width + column_offset+col)>=showThr)
+            {
+                *(dst + (row*dst_width+column_offset+col)*2  ) = Y_value; // 45-green
+                *(dst + (row*dst_width+column_offset+col)*2+1) = CbCr_value; // 22-green
+            }
+        }
+    } 
+}
+
+
+/**
+* @brief		 src image simply copy to dst image size = src_width * src_height * 2
+* @param[in,out] dst		Output YCbCr Image
+* @param[in]	 src		Input  YCbCr Image
+*/
+void Display_OriginalView(unsigned char *dst, int dst_width, int dst_height,
+    unsigned char *src, int src_width, int src_height)
+{ 
+    if (src_height > dst_height)
+    {
+        for ( INT32 row = 0; row<dst_height; row++)
+        {
+            memcpy(dst+row*dst_width*2, src+(row+src_height-dst_height)*src_width*2, src_width*2);
+        }
+    }
+    else
+    {
+        memcpy(dst , src , src_height * src_width * 2);
+    }
+}                       
+//////////////////////////////////////////////////////////////////////////
+
+/**
+*@brief		 Frame(in_grayimg) to Ydst(YCbYCrYCb... format)
+*@param[out] out_dst_Y		the YCbCr ImgData
+*@param[in]  in_grayimg		gray image
+*/
+void CopyImgToDst(UCHAR *out_dst_Y, UCHAR *in_grayimg , UINT32 inWIDTH, UINT32 inHEIGHT)
+{
+    memset(out_dst_Y, 128, inWIDTH*inHEIGHT*2 );
+    for ( int i1 = 0 ;i1< inHEIGHT ;++i1) //480
+    {
+        for (int i2 = 0 ;i2< inWIDTH ;++i2) //640
+        {
+            out_dst_Y[ i1*(inWIDTH*2) + i2*2 ] = in_grayimg[ i1*inWIDTH + i2 ];
+        }
+    }
+}
+//////////////////////////////////////////////////////////////////////////
+void Display_Y_Channel(UCHAR *dst, INT32 dst_width, INT32 dst_height, UCHAR *src_Y, INT32 src_width, INT32 src_height)
+{
+    int row, col;
+
+    memset(dst, 0x80, dst_width*dst_height*2);
+
+    for(row=0; row<src_height; row++)
+    {
+        for (col=0; col<src_width; col++)
+        {
+            *(dst + (row*dst_width + col)*2) = *(src_Y + row*src_width + col);
+        }
+    }    
+}
+
+
+/** 
+* @brief	  Extract the Y channel Data from YCbCr image
+* @param[out] dst_Y			OutputYChannel data
+* @param[in]  src_YCbYCr	Source Image
+* @Note		  src_YCbYCr Image Sequence Type is YCbCr 422 = [YCbYCr YCbYCr YCbYCr ....]
+*/
+void Extract_Y_From_YCbYCr(UCHAR *dst_Y, UCHAR *src_YCbYCr, INT32 img_width, INT32 img_height)
+{
+    INT32 pixel_num   = img_width * img_height;
+    UCHAR *p_dstY     = dst_Y;
+    UCHAR *p_srcYCbCr = src_YCbYCr;
+
+    /// Extract the Y channel Data from YCbCr image
+    for ( INT32 i1 = 0; i1 < pixel_num; ++i1 , ++p_dstY , p_srcYCbCr+=2 )
+        *p_dstY = *p_srcYCbCr;
+
+#ifdef portingData
+    FILE *stream;
+    if( fopen_s( &stream, "D:\\Test\\Eric\\img_src.out", "wb" ) == 0 )
+    {
+        fwrite(dst_Y , sizeof(unsigned char) , pixel_num, stream );
+        fclose( stream );
+    }
+#endif
+}
+
+/** 
+* @brief	  OSD_Show_Boundary show the (0-6m,1-11m) boundary
+* @param[out] dst_Y			OutputYChannel data
+* @param[in]  src_YCbYCr	Source Image
+* @param[in]  carSpec	    CarWidth information
+* @Note		  Image Sequence Type YCbCr 422 = [YCbYCr YCbYCr YCbYCr ....]
+*/
+void OSD_Show_Boundary( UCHAR *dst, UINT32 dst_width, UINT32 dst_height , SimpleCarSpec &carSpec, INT16 * i_CTACustROI )
+{
+    OSD_SetColor( 255 , 255 , 255 );
+    
+    INT32 Start_Xcm = (CTA_TV_WIDTH>>1)*CTA_TV_COMPRESS - i_CTACustROI[1];
+    INT32 End_Xcm   = (CTA_TV_WIDTH>>1)*CTA_TV_COMPRESS - i_CTACustROI[0] ;
+    //INT32 Start_Xcm = (CTA_TV_WIDTH>>1)*CTA_TV_COMPRESS - (carSpec.CarWidth_cm>>1)-1000;//車身外100cm-1000cm
+    //INT32 End_Xcm   = Start_Xcm + 900 ;
+
+    INT32 Start_Ycm = i_CTACustROI[2];     // Customer Spec 
+    INT32 End_Ycm   = i_CTACustROI[3] - 1 ;
+
+    /// 1) Left Side
+    INT32 xi,yi;
+    for ( INT32 hori = Start_Xcm/CTA_TV_COMPRESS ; hori < End_Xcm/CTA_TV_COMPRESS; ++hori )
+    {
+        /// 上
+        WModel->PosWorldToImg( hori, Start_Ycm/CTA_TV_COMPRESS ,xi,yi);
+        OSD_Draw_Pixel( dst , dst_width, dst_height, xi, yi );
+        /// 下
+        WModel->PosWorldToImg( hori, End_Ycm/CTA_TV_COMPRESS ,xi,yi);   //119
+        OSD_Draw_Pixel( dst , dst_width, dst_height, xi, yi );
+
+    }
+    for ( INT32 vert = Start_Ycm/CTA_TV_COMPRESS ; vert < End_Ycm/CTA_TV_COMPRESS; ++vert)
+    {
+        /// 左
+        WModel->PosWorldToImg( Start_Xcm/CTA_TV_COMPRESS, vert ,xi,yi);
+        //WModel->PosWorldToImg( 276, vert ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width, dst_height, xi, yi );
+        /// 右
+        WModel->PosWorldToImg( End_Xcm/CTA_TV_COMPRESS, vert ,xi,yi);
+        //WModel->PosWorldToImg( 516, vert ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width, dst_height, xi, yi );
+    }
+
+    /// 2) Right Side
+    Start_Xcm = (CTA_TV_WIDTH>>1)*CTA_TV_COMPRESS + (carSpec.CarWidth_cm>>1)+100;
+    End_Xcm   = Start_Xcm + 900;
+    for ( INT32 hori = Start_Xcm/CTA_TV_COMPRESS ; hori < End_Xcm/CTA_TV_COMPRESS; ++hori)
+    {
+        /// 上
+        WModel->PosWorldToImg( hori, Start_Ycm/CTA_TV_COMPRESS ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width,  dst_height, xi, yi );
+        /// 下
+        WModel->PosWorldToImg( hori, End_Ycm/CTA_TV_COMPRESS ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width, dst_height, xi, yi );
+    }
+    for ( INT32 vert = Start_Ycm/CTA_TV_COMPRESS ; vert < End_Ycm/CTA_TV_COMPRESS; ++vert)
+    {
+        /// 左
+        WModel->PosWorldToImg( Start_Xcm/CTA_TV_COMPRESS, vert ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width, dst_height, xi, yi );
+        /// 右
+        WModel->PosWorldToImg( End_Xcm/CTA_TV_COMPRESS, vert ,xi,yi);
+        OSD_Draw_Pixel( dst, dst_width, dst_height, xi, yi );
+    }
+}

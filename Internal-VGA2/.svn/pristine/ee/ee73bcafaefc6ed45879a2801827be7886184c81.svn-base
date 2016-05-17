@@ -1,0 +1,103 @@
+/*
+===================================================================
+Name		: ML_NeuralNet.h
+Author		: Austin
+Version		: v0.0010
+Copyright	: Copyright (C) 2014 By oToBrite Electronics Corp.
+Description	: This function implement Point_Group .
+
+==================================================================
+History
+--------------+-------------+-----------------------------------------+------------
+DATE		  |VERSION      |DESCRIPTION  							  | Author
+--------------+-------------+-----------------------------------------+------------
+2014/07/29	  | v0.0010  	|First setup functions        	    	  | Austin
+--------------+-------------+-----------------------------------------+------------
+*/
+
+//---------------------------------------------------------------------------
+#ifndef _ML_NeuralNet_H_
+#define _ML_NeuralNet_H_
+
+//******************************************************************************
+// I N C L U D E   F I L E S
+//******************************************************************************
+#include "CTA_Type.h"
+#include "CTA_Def.h"
+
+//******************************************************************************
+// M A C R O   D E F I N I T I O N S
+//******************************************************************************
+//=================Day===============//
+#define SampleFeatureNum 7
+#define HiddenNodeNum    9
+//=================Night===============//
+#define SampleFeatureNum_Night 5
+#define HiddenNodeNum_Night    6
+
+#define CNN ML_NeuralNet::getInstance()
+//******************************************************************************
+// E X T E R N A L   V A R I A B L E   P R O T O T Y P E S
+//******************************************************************************
+//===================Day============================//
+const FLOAT normalizedMean[SampleFeatureNum]={
+0.656757331636364 , 0.699662632472726 , 0.128007939127273 , 0.00432288607127274 , -1.11696396346545 , 0.00172357207745455 , 393.655636363636 , };
+const FLOAT normalizedStd[SampleFeatureNum]={
+0.122456686500068 , 0.105590200262462 , 0.0710798396046746 , 0.00325917902879901 , 12.2029721036944 , 0.0104031574162593 , 258.275130881523 , };
+const FLOAT BPNWeightInput[SampleFeatureNum*HiddenNodeNum]={
+-11.2179541075101 , -2.8005083616876 , 7.60806752102413 , -7.49078322093993 , -1.64632890667354 , 10.3544802274262 , 11.0084147449457 , -2.95956885174266 , -2.70647599414225 , 11.5561697990692 , 7.43766706013574 , -4.49862758523772 , 5.64930278133552 , -0.859792313404929 , -10.476609771538 , -15.4295513960533 , -1.94073722384003 , -3.65505402612842 , 1.30564353016108 , -1.77490564281573 , 2.307062381193 , -0.317521755055657 , 6.69366634295302 , -2.03538497743214 , 1.74981228602092 , 4.09793120311643 , -3.92563632062695 , -0.631664789330589 , 11.7645703258756 , -0.567414108171426 , 7.27650969230344 , -3.2920491942371 , 0.520961945497523 , 0.643043459248323 , -2.35905268705806 , 6.48967259717787 , 6.7509098867738 , -0.676430297403113 , 24.2740011919199 , 6.77909303531391 , 0.927383759779045 , -8.66650532412954 , 21.2356284405006 , -2.5376181407487 , -6.22975873217598 , -4.46546571508704 , -1.30531813791474 , -2.09355149715203 , -5.94024982114463 , 1.42234201969955 , -4.44769680372505 , 4.9565006888493 , -0.981392760052709 , 8.58478886573893 , -0.567516497040462 , 3.8730671078197 , -0.584480808034941 , 2.51895185201003 , 2.80840420899121 , -0.925663825484509 , 8.28881485093832 , -9.38904422116908 , 10.7414661134658 , };
+const FLOAT BPNWeightHidden[HiddenNodeNum]={
+-2.24699294101249 , -1.22685255845984 , -2.44809315505956 , -1.67880965141719 , 0.97473626138647 , -1.74976328293949 , -1.73883086856777 , -3.59205470690413 , -4.78381789710909 , };
+const FLOAT BPNThetaHidden[HiddenNodeNum]={
+-8.20206657839597 , -11.3982606667343 , -8.39773879194931 , -11.1902913946882 , -14.6073723838755 , -8.41778862702005 , -8.28823057993719 , -16.5321734666332 , -15.1737028767129 , };
+const FLOAT BPNThetaOutput[1]={
+2.01352127279879};
+
+//===================Night============================//
+const FLOAT normalizedMean_Night[SampleFeatureNum_Night]={0 };
+const FLOAT normalizedStd_Night[SampleFeatureNum_Night]={0 };
+const FLOAT BPNWeightInput_Night[SampleFeatureNum_Night*HiddenNodeNum_Night]={0 };
+const FLOAT BPNWeightHidden_Night[HiddenNodeNum_Night]={0};
+const FLOAT BPNThetaHidden_Night[HiddenNodeNum_Night]={0 };
+const FLOAT BPNThetaOutput_Night[1]={0};
+
+//******************************************************************************
+// S T A T I C   F U N C T I O N   P R O T O T Y P E S
+//******************************************************************************
+
+//******************************************************************************
+// E X T E R N A L   F U N C T I O N   P R O T O T Y P E S
+//******************************************************************************
+
+//******************************************************************************
+// F U N C T I O N   B O D Y S
+//******************************************************************************
+
+class ML_NeuralNet
+{
+private:
+    static ML_NeuralNet *instance;
+public:
+
+    ML_NeuralNet(void);
+    ~ML_NeuralNet(void);
+    static ML_NeuralNet* getInstance();
+
+    void CandidateFeatureUpdate_1(CandidateRec CTACandidate[], INT16 inMaxCanNum, UCHAR *g_vSobel_img, UCHAR *g_hSobel_img, UCHAR *g_img_FrameDiff, 
+								  UINT16 imgDimensionX, UINT16 imgDimensionY, HarrisCornerPos *harrisCornersPrev, HarrisCornerPos2 *harrisCorners2Prev, int pointNumPrev,
+								  UINT16 *vSobelQty16x16, UINT16 *hSobelQty16x16, UINT16 *pEdgeQty16x16);
+
+    UINT16 Predict_1(CandidateRec CTACandidate[] ,INT16 inMaxCand , INT16 validNum);
+
+
+    void HeadLightFeatureUpdate_1( HeadLight lamp[MAX_HeadLightNum] , UINT16 inMaxNum);
+    UINT16 HeadLightPredict_1(HeadLight lamp[MAX_HeadLightNum], UINT16 inMaxNum);
+
+};
+
+
+#endif // END #ifndef _ML_NeuralNet_H_
+
+
+
+

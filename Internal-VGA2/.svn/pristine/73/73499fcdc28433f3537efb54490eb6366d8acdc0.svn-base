@@ -1,0 +1,193 @@
+#include "stdafx.h"
+#include "CTA_PCLog.h"
+
+#ifdef _WIN32
+
+//******************************************************************************
+// M A C R O   D E F I N I T I O N S
+//******************************************************************************
+CTA_PCLog* CTA_PCLog::instance = NULL;
+
+//******************************************************************************
+// F U N C T I O N   B O D Y S
+//******************************************************************************
+
+/**
+* @brief  若檔案不存在，輸出一新的檔案，若存在，則在CTALogFile多增加一CTALog子項目。
+* @param[in] ClipName		Input FileName(ex. "c:\\Austin.xml")
+* @param[in] EventResultL   Input BOOL frame-by-frame trigger
+*/
+void CTA_PCLog::ExportCTALog_ALARM( CONST char *ClipName , BOOL *EventResultL ,BOOL *EventResultR, UINT32 EventLen )
+{
+
+    using namespace std;
+    TiXmlDocument doc;       
+    
+    // XML File is not exist
+    if (!doc.LoadFile( FileName.c_str())) 
+    {
+        doc.LinkEndChild(new TiXmlComment("CTA XML log file created using TinyXML. otoBrite - Austin2014"));
+        doc.LinkEndChild(new TiXmlComment("EventData.EventId = 1[LeftROI] / 2[RightROI]"));
+
+        /// CTALog <DateTime , ClipName>
+        TiXmlElement* Element1   =  new TiXmlElement("CTALogFile"); 
+        TiXmlElement* Element1_1 =  new TiXmlElement("CTALog"); 
+        time_t t1                = time(NULL);
+        struct tm *local         = localtime(&t1);
+        char *str_time           = asctime(local);
+
+        Element1_1->SetAttribute("DateTime",str_time);
+        Element1_1->SetAttribute("ClipName",(char *)ClipName);
+
+        /// EventData <EventId , StartFrame , EndFrame>
+        TiXmlElement *Element1_1_1;
+        for ( INT32 i1 = 0 ; i1 < EventLen ; ++i1)
+        {
+            if( TRUE == EventResultL[i1] )
+            {
+                INT endIdx = 0;
+                for (INT32 i2 = i1 ; i2 < EventLen ;++i2)
+                {
+                    if (FALSE == EventResultL[i2] )
+                    {
+                        endIdx = i2 - 1;
+                        break;
+                    }
+                } // end of i2 < EventLen
+
+                char string1[10];
+                sprintf(string1, "%d", i1);
+                Element1_1_1 = new TiXmlElement("EventData");
+                Element1_1_1->SetAttribute("EventId","1"); ///<Left side
+                Element1_1_1->SetAttribute("StartFrame",string1);
+                sprintf(string1, "%d", endIdx);
+                Element1_1_1->SetAttribute("EndFrame",string1);
+                Element1_1->LinkEndChild( Element1_1_1 );
+                i1 = endIdx;
+            }// end of (TRUE == EventResultL[i1])
+        }
+        //Right Side
+        for ( INT32 i1 = 0 ; i1 < EventLen ; ++i1)
+        {
+            if( TRUE == EventResultR[i1] )
+            {
+                INT endIdx = 0;
+                for (INT32 i2 = i1 ; i2 < EventLen ;++i2)
+                {
+                    if (FALSE == EventResultR[i2] )
+                    {
+                        endIdx = i2 - 1;
+                        break;
+                    }
+                } // end of i2 < EventLen
+
+                char string1[10];
+                sprintf(string1, "%d", i1);
+                Element1_1_1 = new TiXmlElement("EventData");
+                Element1_1_1->SetAttribute("EventId","2"); //RightSide
+                Element1_1_1->SetAttribute("StartFrame",string1);
+                sprintf(string1, "%d", endIdx);
+                Element1_1_1->SetAttribute("EndFrame",string1);
+                Element1_1->LinkEndChild( Element1_1_1 );
+                i1 = endIdx;
+            }// end of (TRUE == EventResultR[i1])
+        } // end of i1 < EventLen
+
+        Element1->LinkEndChild(Element1_1);
+        doc.LinkEndChild(Element1);
+        doc.SaveFile(FileName.c_str());    
+    }
+    else // XML File is exist
+    {
+        //cout << "Exist XML File" << endl;
+
+        TiXmlElement *Element1     = doc.RootElement();             ///< CTALogFile元素  
+        TiXmlElement *Element1_1   = new TiXmlElement("CTALog");    ///< CTALog元素
+
+        time_t t1                = time(NULL);
+        struct tm *local         = localtime(&t1);
+        char *str_time           = asctime(local);
+
+        Element1_1->SetAttribute("DateTime",str_time);
+        Element1_1->SetAttribute("ClipName",(char *)ClipName);
+
+        /// EventData <EventId , StartFrame , EndFrame>
+        TiXmlElement *Element1_1_1;
+        for ( INT32 i1 = 0 ; i1 < EventLen ; ++i1)
+        {
+            if( TRUE == EventResultL[i1] )
+            {
+                INT endIdx = 0;
+                for (INT32 i2 = i1 ; i2 < EventLen ;++i2)
+                {
+                    if (FALSE == EventResultL[i2] )
+                    {
+                        endIdx = i2 - 1;
+                        break;
+                    }
+                } // end of i2 < EventLen
+
+                char string1[10];
+                sprintf(string1, "%d", i1);
+                Element1_1_1 = new TiXmlElement("EventData");
+                Element1_1_1->SetAttribute("EventId","1"); ///<Left side
+                Element1_1_1->SetAttribute("StartFrame",string1);
+                sprintf(string1, "%d", endIdx);
+                Element1_1_1->SetAttribute("EndFrame",string1);
+                Element1_1->LinkEndChild( Element1_1_1 );
+                i1 = endIdx;
+            }// end of (TRUE == EventResultL[i1])
+        }
+        //Right Side
+        for ( INT32 i1 = 0 ; i1 < EventLen ; ++i1)
+        {
+            if( TRUE == EventResultR[i1] )
+            {
+                INT endIdx = 0;
+                for (INT32 i2 = i1 ; i2 < EventLen ;++i2)
+                {
+                    if (FALSE == EventResultR[i2] )
+                    {
+                        endIdx = i2 - 1;
+                        break;
+                    }
+                } // end of i2 < EventLen
+
+                char string1[10];
+                sprintf(string1, "%d", i1);
+                Element1_1_1 = new TiXmlElement("EventData");
+                Element1_1_1->SetAttribute("EventId","2"); //RightSide
+                Element1_1_1->SetAttribute("StartFrame",string1);
+                sprintf(string1, "%d", endIdx);
+                Element1_1_1->SetAttribute("EndFrame",string1);
+                Element1_1->LinkEndChild( Element1_1_1 );
+                i1 = endIdx;
+            }// end of (TRUE == EventResultR[i1])
+        } // end of i1 < EventLen
+
+        Element1->LinkEndChild(Element1_1);
+
+        doc.SaveFile(FileName.c_str());  
+        
+    }
+    return;
+}
+
+
+CTA_PCLog* CTA_PCLog::getInstance()
+{
+    if(!instance)
+        instance = new CTA_PCLog;
+    return instance;
+}
+CTA_PCLog::CTA_PCLog(void)
+{
+    FileName = PCLogFilePath;
+}
+
+
+CTA_PCLog::~CTA_PCLog(void)
+{
+}
+
+#endif
