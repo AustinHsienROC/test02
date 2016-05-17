@@ -1,9 +1,7 @@
-<<<<<<< HEAD
+/////4444////////////
 /////3333////////////
 /////2222////////////
 /////1111////////////
-=======
->>>>>>> parent of 8b3a6b0... v1
 /// used in the canny edge.
 #if !defined(ARRAY_H)  
 #define ARRAY_H  
