@@ -1,0 +1,36 @@
+/*
+===================================================================
+Name		: CTA_CustomData.h
+Author		: Austin
+Version		: v0.0010
+Copyright	: Copyright (C) 2014 By oToBrite Electronics Corp.
+Description	: DEFINE the STRUCT and Prototype 客製化汽車資訊
+==================================================================
+History
+--------------+-------------+-----------------------------------------+------------
+DATE		  |VERSION      |DESCRIPTION  							  | Author
+--------------+-------------+-----------------------------------------+------------
+2014/07/09	  | v0.0010  	|First setup functions        	    	  | Austin
+--------------+-------------+-----------------------------------------+------------
+*/
+
+#ifndef __CUSTOMDATA_H
+#define __CUSTOMDATA_H
+
+/// Basic Car Info[CarWidth, WheelBase]
+typedef struct {
+    unsigned short	usSTSize;                     // this struct size. for struct version reference
+    unsigned short	usVersion;                    // The data version for custom data
+    unsigned short	usCustomID_Lo;	              // ID is specified for the uni car model
+    unsigned short	usCustomID_Hi;	              // ID is specified for the uni car model
+    unsigned short  usWheelSpan;
+    unsigned short  usRearToFrontWheel;	
+    unsigned short  usCarWidth;	
+    unsigned short  usLDWSPreWarningTime_10Times; // Real LDWS pre-warning time X 10
+    unsigned short	usWheelBase_cm;
+    unsigned short  usRearTireToBumper_cm;
+    unsigned int	unSTEER_OVER_FRONT_TIRE_Numerator;
+    unsigned int	unSTEER_OVER_FRONT_TIRE_Denominator;
+} CustomData1_st;
+
+#endif
